@@ -198,10 +198,15 @@ MonoBehaviour:
   <VoiceSource>k__BackingField: {fileID: 6307802663512360822}
   <DeviceName>k__BackingField: 
   <HearSelf>k__BackingField: 1
+  <EffectsContainer>k__BackingField: {fileID: 4121517913774088351}
   <SampleRate>k__BackingField: 44100
   <RecordDuration>k__BackingField: 60
   <SamplePacketScale>k__BackingField: 0.1
   <VoiceClipScale>k__BackingField: 5
+  <EnableNoiseReduction>k__BackingField: 1
+  <EnableNormalize>k__BackingField: 1
+  <EnableGate>k__BackingField: 1
+  <GateThreshold>k__BackingField: 0.006
   _samplePacketSize: 4410
   _voiceClipSize: 22050
   _recording: 0

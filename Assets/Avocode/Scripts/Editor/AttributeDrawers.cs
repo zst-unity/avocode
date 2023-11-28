@@ -1,7 +1,7 @@
 using UnityEditor;
 using UnityEngine;
 
-namespace ZSTUnity.QoL.Editor
+namespace ZSTUnity.Avocode.Attributes
 {
     [CustomPropertyDrawer(typeof(ReadOnlyAttribute))]
     public class ReadOnlyDrawer : PropertyDrawer

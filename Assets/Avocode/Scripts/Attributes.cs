@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace ZSTUnity.QoL
+namespace ZSTUnity.Avocode.Attributes
 {
     public class ReadOnlyAttribute : PropertyAttribute { }
 }
