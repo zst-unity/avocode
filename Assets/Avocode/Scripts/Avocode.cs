@@ -5,6 +5,7 @@ using ZSTUnity.Avocode.Exceptions;
 using ZSTUnity.Avocode.Utils;
 using ZSTUnity.Avocode.Attributes;
 using System;
+using ZSTUnity.Avocode.Processing;
 
 namespace ZSTUnity.Avocode
 {
@@ -17,8 +18,6 @@ namespace ZSTUnity.Avocode
         [field: SerializeField] public string DeviceName { get; private set; }
         [field: Tooltip("If true, the player will be able to hear himself talking")]
         [field: SerializeField] public bool HearSelf { get; private set; }
-        [field: Tooltip("Objects where all effects are stored")]
-        [field: SerializeField] public GameObject EffectsContainer { get; private set; }
 
         [field: Header("Recording")]
         [field: Tooltip("Voice recording sample rate in hz\nCommon sample rates: 48000, 44100, 32000, 22050, 11025, 8000")]
@@ -32,20 +31,21 @@ namespace ZSTUnity.Avocode
         [field: Tooltip("Scale of voice audio clip that will be player (not recommended to modify)")]
         [field: SerializeField, Min(1)] public int VoiceClipScale { get; private set; } = 5;
 
-        [field: Header("Noise Reduction")]
-        [field: SerializeField] public bool EnableNoiseReduction { get; private set; } = true;
-
-        [field: Header("Normalize")]
-        [field: SerializeField] public bool EnableNormalize { get; private set; } = true;
-
         [field: Header("Gate")]
+        [field: Tooltip("Toggle noise gate effect")]
         [field: SerializeField] public bool EnableGate { get; private set; } = true;
-        [field: SerializeField, Range(0, 1)] public float GateThreshold { get; private set; } = 0.006f;
+        [field: Tooltip("Every voice sample quieter than the specified threshold will be silent")]
+        [field: SerializeField, Range(-96, 20)] public float GateThreshold { get; private set; } = -45f;
+        [field: Tooltip("Sound fade duration in seconds from silent to normal")]
+        [field: SerializeField, Range(0, 1)] public float GateAttack { get; private set; } = 0.05f;
+        [field: Tooltip("Sound fade duration in seconds from normal to silent")]
+        [field: SerializeField, Range(0, 1)] public float GateRelease { get; private set; } = 0.5f;
+        private float _gateThreshold;
 
         [field: Header("Info")]
-        [ReadOnly, SerializeField] private int _samplePacketSize;
-        [ReadOnly, SerializeField] private int _voiceClipSize;
-        [ReadOnly, SerializeField] private bool _recording;
+        [AvocodeReadOnly, SerializeField] private int _samplePacketSize;
+        [AvocodeReadOnly, SerializeField] private int _voiceClipSize;
+        [AvocodeReadOnly, SerializeField] private bool _recording;
 
         private AudioClip _recordClip;
         private bool _failed;
@@ -57,6 +57,8 @@ namespace ZSTUnity.Avocode
         [HideInInspector] private float[] _readSampleBuffer;
         [HideInInspector] private float[] _samplePacket;
 
+        private AvocodeAudioProcessor _avocodeAudioProcessor;
+
         protected override void OnValidate()
         {
             base.OnValidate();
@@ -64,11 +66,14 @@ namespace ZSTUnity.Avocode
             _samplePacketSize = (int)(SampleRate * SamplePacketScale);
             _voiceClipSize = _samplePacketSize * VoiceClipScale;
 
-            if (!EffectsContainer) EffectsContainer = gameObject;
-
             if (VoiceSource)
             {
                 VoiceSource.loop = true;
+            }
+
+            if (Application.isPlaying)
+            {
+                _gateThreshold = AvocodeUtils.ToAmplitude(GateThreshold);
             }
         }
 
@@ -80,6 +85,9 @@ namespace ZSTUnity.Avocode
             if (!string.IsNullOrEmpty(DeviceName) && !Microphone.devices.Contains(DeviceName))
                 Fail($"An input device \"{DeviceName}\" was not found. Specify a correct name for the input device, or leave the Device Name field blank so that the input device is automatically detected");
 
+            _gateThreshold = AvocodeUtils.ToAmplitude(GateThreshold);
+
+            _avocodeAudioProcessor = new(SampleRate);
             ResetRecording();
             ResetReading();
         }
@@ -113,11 +121,12 @@ namespace ZSTUnity.Avocode
             }
         }
 
-        private void FixedUpdate()
+        private void Update()
         {
             if (_failed || !isOwned) return;
             Record();
         }
+
 
         private void Record()
         {
@@ -127,9 +136,6 @@ namespace ZSTUnity.Avocode
             if (position < 0 || _recordHead == position) return;
 
             _recordClip.GetData(_recordSampleBuffer, 0);
-
-            static int GetDataLength(int bufferLength, int head, int tail) =>
-                head < tail ? tail - head : bufferLength - head + tail;
 
             while (GetDataLength(_recordSampleBuffer.Length, _recordHead, position) > _samplePacket.Length)
             {
@@ -144,7 +150,7 @@ namespace ZSTUnity.Avocode
                     Array.Copy(_recordSampleBuffer, _recordHead, _samplePacket, 0, _samplePacket.Length);
                 }
 
-                SamplePacketReady();
+                SamplePacketReady(_samplePacket);
                 _recordHead += _samplePacket.Length;
                 if (_recordHead > _recordSampleBuffer.Length)
                 {
@@ -153,21 +159,17 @@ namespace ZSTUnity.Avocode
             }
         }
 
-        private void SamplePacketReady()
+        private int GetDataLength(int bufferLength, int head, int tail) => head < tail ? tail - head : bufferLength - head + tail;
+
+        private void SamplePacketReady(float[] samplePacket)
         {
             var processSamplePacket = new float[_samplePacketSize];
-            Array.Copy(_samplePacket, processSamplePacket, _samplePacketSize);
-
-            if (EnableNoiseReduction)
-                AvocodeProcessing.NoiseReduceSamples(processSamplePacket);
-
-            if (EnableNormalize)
-                AvocodeProcessing.NormalizeSamples(processSamplePacket);
+            Array.Copy(samplePacket, processSamplePacket, _samplePacketSize);
 
             if (EnableGate)
-                AvocodeProcessing.GateSamples(processSamplePacket, GateThreshold);
+                _avocodeAudioProcessor.GateSamples(processSamplePacket, _gateThreshold, GateAttack, GateRelease);
 
-            var compressedSamplePacket = AvocodeCompression.Compress(processSamplePacket);
+            var compressedSamplePacket = AvocodeUtils.Compress(processSamplePacket);
             CmdSendAudio(compressedSamplePacket);
         }
 
@@ -182,7 +184,7 @@ namespace ZSTUnity.Avocode
         {
             if (!HearSelf && isOwned) return;
 
-            var samplePacket = AvocodeCompression.Decompress(compressedSamplePacket);
+            var samplePacket = AvocodeUtils.Decompress(compressedSamplePacket);
             ReadAudio(samplePacket);
         }
 

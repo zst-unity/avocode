@@ -1,11 +1,26 @@
 using System;
 using System.IO;
 using System.IO.Compression;
+using UnityEngine;
 
 namespace ZSTUnity.Avocode.Utils
 {
-    public static class AvocodeCompression
+    public static class AvocodeUtils
     {
+        public static float ToAmplitude(float dB) => Mathf.Pow(10, dB / 20);
+
+        public static float GetRMS(float[] samples)
+        {
+            var sqSum = 0f;
+            for (int i = 0; i < samples.Length; i++)
+            {
+                sqSum += samples[i] * samples[i];
+            }
+
+            var avg = sqSum / samples.Length;
+            return Mathf.Sqrt(avg);
+        }
+
         public static byte[] Compress(float[] input)
         {
             var compressedSamples = new byte[input.Length * 4];
