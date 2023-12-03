@@ -2,3 +2,5 @@
 Free and easy voice chat solution for Unity Mirror Networking
 ## Features
 - Toggable noise gate effect
+  
+ ![noise gate](Media/NoiseGateInspector.png)
