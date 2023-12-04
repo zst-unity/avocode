@@ -21,11 +21,11 @@ namespace ZSTUnity.Avocode
 
         [field: Header("Recording")]
         [field: Tooltip("Voice recording sample rate in hz\nCommon sample rates: 48000, 44100, 32000, 22050, 11025, 8000")]
-        [field: SerializeField, Min(0)] public int SampleRate { get; private set; } = 44100;
+        [field: SerializeField, Min(0)] public int SampleRate { get; private set; } = 32000;
         [field: Tooltip("Voice recording duration in seconds (not recommended to modify)")]
-        [field: SerializeField, Min(0)] public int RecordDuration { get; private set; } = 60;
+        [field: SerializeField, Min(0)] public int RecordDuration { get; private set; } = 45;
         [field: Tooltip("Scale of sample packet that will be send to clients (not recommended to modify)")]
-        [field: SerializeField, Range(0, 1)] public float SamplePacketScale { get; private set; } = 0.1f;
+        [field: SerializeField, Range(0, 1)] public float SamplePacketScale { get; private set; } = 0.05f;
 
         [field: Header("Reading")]
         [field: Tooltip("Scale of voice audio clip that will be player (not recommended to modify)")]
@@ -40,7 +40,7 @@ namespace ZSTUnity.Avocode
         [field: SerializeField, Range(0, 1)] public float GateAttack { get; private set; } = 0.05f;
         [field: Tooltip("Sound fade duration in seconds from normal to silent")]
         [field: SerializeField, Range(0, 1)] public float GateRelease { get; private set; } = 0.5f;
-        private float _gateThreshold;
+        [SerializeField, HideInInspector] private float _gateThreshold;
 
         [field: Header("Info")]
         [AvocodeReadOnly, SerializeField] private int _samplePacketSize;
@@ -65,15 +65,11 @@ namespace ZSTUnity.Avocode
             DeviceName = DeviceName.Trim();
             _samplePacketSize = (int)(SampleRate * SamplePacketScale);
             _voiceClipSize = _samplePacketSize * VoiceClipScale;
+            _gateThreshold = AvocodeUtils.ToAmplitude(GateThreshold);
 
             if (VoiceSource)
             {
                 VoiceSource.loop = true;
-            }
-
-            if (Application.isPlaying)
-            {
-                _gateThreshold = AvocodeUtils.ToAmplitude(GateThreshold);
             }
         }
 
@@ -84,8 +80,6 @@ namespace ZSTUnity.Avocode
 
             if (!string.IsNullOrEmpty(DeviceName) && !Microphone.devices.Contains(DeviceName))
                 Fail($"An input device \"{DeviceName}\" was not found. Specify a correct name for the input device, or leave the Device Name field blank so that the input device is automatically detected");
-
-            _gateThreshold = AvocodeUtils.ToAmplitude(GateThreshold);
 
             _avocodeAudioProcessor = new(SampleRate);
             ResetRecording();
@@ -121,12 +115,11 @@ namespace ZSTUnity.Avocode
             }
         }
 
-        private void Update()
+        private void FixedUpdate()
         {
             if (_failed || !isOwned) return;
             Record();
         }
-
 
         private void Record()
         {
@@ -176,14 +169,20 @@ namespace ZSTUnity.Avocode
         [Command]
         private void CmdSendAudio(byte[] compressedSamplePacket)
         {
-            RpcReceiveAudio(compressedSamplePacket);
+            if (HearSelf) RpcReceiveAudioForAll(compressedSamplePacket);
+            else RpcReceiveAudioForOthers(compressedSamplePacket);
         }
 
         [ClientRpc]
-        private void RpcReceiveAudio(byte[] compressedSamplePacket)
+        private void RpcReceiveAudioForAll(byte[] compressedSamplePacket)
         {
-            if (!HearSelf && isOwned) return;
+            var samplePacket = AvocodeUtils.Decompress(compressedSamplePacket);
+            ReadAudio(samplePacket);
+        }
 
+        [ClientRpc(includeOwner = false)]
+        private void RpcReceiveAudioForOthers(byte[] compressedSamplePacket)
+        {
             var samplePacket = AvocodeUtils.Decompress(compressedSamplePacket);
             ReadAudio(samplePacket);
         }
@@ -192,6 +191,7 @@ namespace ZSTUnity.Avocode
         {
             if (!VoiceSource.clip)
             {
+                Debug.LogError("Voice clip is null, creating new voice clip");
                 VoiceSource.clip = AudioClip.Create("Voice", _voiceClipSize, 1, SampleRate, false);
             }
 
@@ -208,7 +208,9 @@ namespace ZSTUnity.Avocode
                 VoiceSource.Play();
             }
 
+            Debug.LogError($"Read head before is {_readHead}");
             _readHead %= _voiceClipSize;
+            Debug.LogError($"Read head after is {_readHead}");
         }
 
         [Command]

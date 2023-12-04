@@ -9,5 +9,4 @@ namespace ZSTUnity.Avocode.Demo
             Application.targetFrameRate = string.IsNullOrEmpty(input) ? -1 : int.Parse(input);
         }
     }
-
 }

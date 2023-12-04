@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.IO.Compression;
 using UnityEngine;
+using CompressionLevel = System.IO.Compression.CompressionLevel;
 
 namespace ZSTUnity.Avocode.Utils
 {
@@ -27,7 +28,7 @@ namespace ZSTUnity.Avocode.Utils
             Buffer.BlockCopy(input, 0, compressedSamples, 0, compressedSamples.Length);
 
             using var memoryStream = new MemoryStream();
-            using (var deflateStream = new DeflateStream(memoryStream, CompressionMode.Compress, true/*msは*/))
+            using (var deflateStream = new DeflateStream(memoryStream, CompressionLevel.Optimal, true))
             {
                 deflateStream.Write(compressedSamples, 0, compressedSamples.Length);
             }
